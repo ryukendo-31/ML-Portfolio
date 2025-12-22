@@ -1,0 +1,109 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.model_selection import train_test_split
+from sklearn.feature_selection import VarianceThreshold
+from sklearn.linear_model import Ridge
+from sklearn.metrics import mean_squared_error, r2_score
+import warnings
+
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+
+df = pd.read_csv("C:\\Users\\aarya\\OneDrive\\Desktop\\code\\ML Portfolio\\001_LinearRegression\\data.csv")
+
+df['sex'] = df['sex'].map({'male': 0, 'female': 1})
+df['smoker'] = df['smoker'].map({'no': 0, 'yes': 1})
+df = pd.get_dummies(df, columns=['region'], drop_first=True)
+df = df.astype(float)
+
+target_col = 'expenses'  # Target variable (y)
+X = df.drop(columns=[target_col]).values
+y = df[target_col].values
+
+print(f"Original feature shape: {X.shape}")
+degree = 2  # degree of polynomial (try 3 for more complex curve)
+poly = PolynomialFeatures(degree=degree, include_bias=False)
+X_poly = poly.fit_transform(X)
+
+print(f"Transformed (Polynomial) feature shape: {X_poly.shape}")
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X_poly, y, test_size=0.2, random_state=42
+)
+
+X_mean = np.mean(X_train, axis=0)
+X_std = np.std(X_train, axis=0)
+X_std[X_std == 0] = 1  # Prevent divide-by-zero error
+
+X_train = (X_train - X_mean) / X_std
+X_test = (X_test - X_mean) / X_std
+
+print("\nMean of training data:")
+print(X_mean)
+print("\nStandard deviation of training data:")
+print(X_std)
+
+selector = VarianceThreshold(threshold=0.0)
+X_train = selector.fit_transform(X_train)
+X_test = selector.transform(X_test)
+
+print(f"\nAfter removing constant features: {X_train.shape[1]} features remain")
+
+print("\nUsing Ridge Regression for stability...")
+ridge = Ridge(alpha=1e-3)
+ridge.fit(X_train, y_train)
+
+theta = ridge.coef_
+intercept = ridge.intercept_
+
+y_pred = ridge.predict(X_test)
+
+mse = mean_squared_error(y_test, y_pred)
+r2 = r2_score(y_test, y_pred)
+
+print("\n------------ MODEL PERFORMANCE ------------")
+print(f"MSE: {mse:.2f}")
+print(f"R² Score: {r2:.4f}")
+print("-------------------------------------------")
+
+sample = X_test[0].reshape(1, -1)
+sample_pred = ridge.predict(sample)
+print(f"\nExample prediction: {sample_pred[0]:.2f} (actual: {y_test[0]:.2f})")
+
+
+plt.figure(figsize=(6,6))
+plt.scatter(y_test, y_pred, color='royalblue', alpha=0.6)
+plt.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'r--', linewidth=2)
+plt.xlabel("Actual Expenses")
+plt.ylabel("Predicted Expenses")
+plt.title("Predicted vs Actual Medical Expenses (Polynomial Regression)")
+plt.grid(True)
+plt.show()
+
+residuals = y_test - y_pred
+plt.figure(figsize=(6,4))
+plt.scatter(y_pred, residuals, color='darkorange', alpha=0.6)
+plt.axhline(0, color='red', linestyle='--', linewidth=2)
+plt.xlabel("Predicted Expenses")
+plt.ylabel("Residuals (Actual - Predicted)")
+plt.title("Residual Plot (Polynomial Regression)")
+plt.grid(True)
+plt.show()
+
+models = ['Linear Regression', 'Polynomial Regression']
+r2_scores = [0.784, 0.8667]  # Replace with your actual values
+rmse_values = [5796.56, np.sqrt(mse)]
+
+fig, ax1 = plt.subplots(figsize=(7,5))
+ax1.bar(models, r2_scores, color=['skyblue', 'teal'])
+ax1.set_ylabel("R² Score", color='teal')
+ax1.set_title("Model Performance Comparison")
+
+for i, v in enumerate(r2_scores):
+    ax1.text(i, v + 0.01, f"{v:.3f}", ha='center')
+
+plt.show()
+
+
+

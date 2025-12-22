@@ -1,0 +1,209 @@
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import r2_score, mean_squared_error
+import matplotlib.pyplot as plt
+import seaborn as sns
+import warnings
+
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+
+df = pd.read_csv("C:\\Users\\aarya\\OneDrive\\Desktop\\code\\ML Portfolio\\001_LinearRegression\\data.csv")  # https://www.kaggle.com/datasets/awaiskaggler/insurance-csv?
+                                                               # refernce for the dataset taken from kaggle
+                                                               # name Insurance csv
+df['sex'] = df['sex'].map({'male': 0, 'female': 1})
+df['smoker'] = df['smoker'].map({'no': 0, 'yes': 1})
+df = pd.get_dummies(df, columns=['region'], drop_first=True)
+df = df.astype(float)                                         # used to avoid perfect multi-collinearity, so one option is dropped and others are predicted using it
+                                                              # important in regression prediction for categorical columns
+
+target_col = 'expenses'  # target here is expenses column, target is the value we attempt to predict based on various features(factors affecting the target)
+
+X_train, X_test, y_train, y_test = train_test_split(
+    df.drop(target_col, axis=1).values,
+    df[target_col].values,
+    test_size=0.2,
+    random_state=42
+)
+
+X_mean = X_train.mean(axis=0)
+X_std = X_train.std(axis=0)
+print("Mean of training data:")
+print(X_mean)
+print("\n Standard deviation of training data")
+print(X_std)
+X_train = (X_train - X_mean) / X_std
+X_test = (X_test - X_mean) / X_std
+print("\nAfter Normailization(training data): ")
+print(X_train)
+print("\nAfter Normailization(test data): ")
+print(X_test)
+X_train = np.c_[np.ones(X_train.shape[0]), X_train]
+X_test = np.c_[np.ones(X_test.shape[0]), X_test]
+
+def normal_equation(X, y):
+    return np.linalg.pinv(X.T @ X) @ X.T @ y#closed form to calculate/predict using normal equation
+
+theta = normal_equation(X_train, y_train)
+
+y_pred = X_test @ theta
+r2 = r2_score(y_test, y_pred)
+rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+
+print("------------MODEL PERFORMANCE---------")
+print(f"R^2 Score : {r2:.3f}")
+print(f"RMSE     : {rmse:.2f}")
+print("-------------------------------------------------\n")
+
+feature_names = ['Intercept', 'age', 'sex', 'bmi', 'children', 'smoker',
+                 'region_northwest', 'region_southeast', 'region_southwest']
+
+print("Feature Coefficients:")
+for name, coef in zip(feature_names, theta):
+    print(f"{name:20s}: {coef:.3f}")
+print("----------------------------------------------\n")
+
+def predict_expense(age, sex, bmi, children, smoker, region):  # function for input data
+    if sex.lower() == 'female':  # categorical data needs to be converted to numeric
+        sex = 1
+    else:
+        sex = 0
+    if smoker.lower() == 'yes':
+        smoker = 1
+    else:
+        smoker = 0
+
+    if region.lower() == 'northwest':
+        region_northwest = 1
+    else:
+        region_northwest = 0
+    if region.lower() == 'southeast':
+        region_southeast = 1
+    else:
+        region_southeast = 0
+    if region.lower() == 'southwest':
+        region_southwest = 1
+    else:
+        region_southwest = 0
+
+    user_input = np.array([age, sex, bmi, children, smoker,
+                           region_northwest, region_southeast, region_southwest])  # we create a array in the same ordeer as the data set, maintaining order is important to make sure inputs match correctly
+
+    user_input = (user_input - X_mean) / X_std  # Normalize using training data set's mean and std
+    user_input = np.insert(user_input, 0, 1)  # adding 1 in 0th index to make sure that the structure is same and the bias element is accurately computed
+
+    predicted_expense = user_input @ theta  # y_predicted = theta.X(input_feature)
+    return predicted_expense
+
+corr = df.corr()
+print("Correlation Coefficients (expenses with other features):\n")
+print(corr['expenses'].sort_values(ascending=False))
+
+def get_user_input_and_predict():  # initialise the function
+    try:
+        print("Enter the following details:")
+        age = float(input("Age: "))
+        sex = input("Sex (male/female): ")
+        bmi = float(input("BMI: "))
+        children = int(input("Number of children: "))
+        smoker = input("Smoker (yes/no): ")
+        region = input("Region (northeast/northwest/southeast/southwest): ")
+
+        if region.lower() not in ['northeast', 'northwest', 'southeast', 'southwest']:
+            print("Invalid region. Please enter a valid region name.")
+            return
+
+        predicted = predict_expense(age, sex, bmi, children, smoker, region)
+        print(f"\nPredicted Insurance Expense: ${predicted:.2f}\n")
+
+    except ValueError:
+        print("Invalid input!\n")
+
+sns.set_style("whitegrid")
+fig = plt.figure(constrained_layout=True, figsize=(20, 25))
+gs = fig.add_gridspec(5, 2)
+
+ax0 = fig.add_subplot(gs[0, 0])
+sns.histplot(df['expenses'], bins=50, kde=True, color='skyblue', ax=ax0)
+ax0.set_title("Distribution of Insurance Expenses")
+ax0.set_xlabel("Expenses")
+ax0.set_ylabel("Count")
+
+ax1 = fig.add_subplot(gs[0, 1])
+sns.boxplot(x=df['expenses'], color='lightgreen', ax=ax1)
+ax1.set_title("Boxplot of Expenses")
+
+numeric_features = ['age', 'bmi', 'children']
+for i, feature in enumerate(numeric_features):
+    ax = fig.add_subplot(gs[1 + i // 2, i % 2])
+    sns.histplot(df[feature], bins=30, kde=True, color='orange', ax=ax)
+    ax.set_title(f"Distribution of {feature}")
+
+categorical_features = ['sex', 'smoker']
+for i, feature in enumerate(categorical_features):
+    ax = fig.add_subplot(gs[3, i])
+    sns.countplot(x=feature, data=df, palette='pastel', ax=ax)
+    ax.set_title(f"{feature.capitalize()} Distribution")
+
+fig2, axes2 = plt.subplots(1, 3, figsize=(20, 5))
+for ax, feature in zip(axes2, numeric_features):
+    sns.scatterplot(x=feature, y='expenses', data=df, hue='smoker', palette='Set1', ax=ax)
+    ax.set_title(f"Expenses vs {feature}")
+
+fig3, axes3 = plt.subplots(1, 5, figsize=(25, 5))
+for ax, feature in zip(axes3, categorical_features + ['region_northwest', 'region_southeast', 'region_southwest']):
+    sns.boxplot(x=feature, y='expenses', data=df, ax=ax)
+    ax.set_title(f"Expenses by {feature}")
+
+plt.figure(figsize=(10, 8))
+corr = df.corr()
+sns.heatmap(corr, annot=True, fmt=".2f", cmap='coolwarm', linewidths=0.5)
+plt.title("Correlation Heatmap")
+plt.show()
+
+plt.figure(figsize=(6,6))
+plt.scatter(y_test, y_pred, color='royalblue', alpha=0.6)
+plt.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'r--')
+plt.xlabel("Actual Expenses")
+plt.ylabel("Predicted Expenses")
+plt.title("Predicted vs Actual Medical Expenses (Linear Regression)")
+plt.show()
+
+X = df.drop('expenses', axis=1).values
+y = df['expenses'].values
+X_mean = X.mean(axis=0)
+X_std = X.std(axis=0)
+X_norm = (X - X_mean) / X_std
+X_norm = np.c_[np.ones(X_norm.shape[0]), X_norm]
+
+theta = normal_equation(X_norm, y)
+features = ['age', 'sex', 'bmi', 'children', 'smoker',
+            'region_northwest', 'region_southeast', 'region_southwest']
+coefficients = theta[1:]
+
+plt.figure(figsize=(8, 5))
+plt.barh(features, coefficients, color='teal')
+plt.xlabel("Coefficient Value")
+plt.title("Feature Importance from Linear Regression")
+plt.show()
+
+
+plt.figure(figsize=(8, 5))
+sns.barplot(x='smoker', y='expenses', hue='sex', data=df, palette='Set2')
+plt.title("Average Expenses by Smoker and Gender")
+plt.show()
+# data discretization
+df['age_group'] = pd.cut(df['age'], bins=[17, 29, 39, 49, 65], labels=['18-29','30-39','40-49','50+'])
+df['bmi_group'] = pd.cut(df['bmi'], bins=[0,18.5,24.9,29.9,100], labels=['Underweight','Normal','Overweight','Obese'])
+df['children_group'] = pd.cut(df['children'], bins=[-1,0,1,2,10], labels=['0','1','2','3+'])
+
+plt.figure(figsize=(8,4))
+sns.countplot(x='age_group', data=df, palette='pastel')
+plt.title("Discretized Age Groups")
+plt.show()
+while True:#to recall the function till needed
+    get_user_input_and_predict()
+    again = input("Would you like to predict again? (yes/no): ").strip().lower()
+    if again != 'yes':
+        print("\nExiting... Thank you for using the Insurance Predictor!")
+        break
